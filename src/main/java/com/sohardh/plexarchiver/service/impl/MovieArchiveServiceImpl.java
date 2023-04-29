@@ -17,11 +17,25 @@
  * under the License.
  */
 
-package com.sohardh.plexarchiver.dto;
+package com.sohardh.plexarchiver.service.impl;
 
-public record Movie(String guid, String title,
-                    int viewCount, long addedAt,
-                    long originallyAvailableAt, String thumb
-) {
+import com.sohardh.plexarchiver.service.MovieArchiveService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
+@Service
+@Slf4j
+public class MovieArchiveServiceImpl implements MovieArchiveService {
+
+  @Value("${movies.path}")
+  private String source;
+
+  @Value("${archive.path}")
+  private String sink;
+
+  @Override
+  public void archiveMovies() {
+
+  }
 }
