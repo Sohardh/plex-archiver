@@ -17,26 +17,8 @@
  * under the License.
  */
 
-package com.sohardh.plexarchiver.dto;
+package com.sohardh.plexarchiver.dao.model;
 
-import java.util.List;
-import lombok.Builder;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.ToString;
+public class MovieModel {
 
-@Builder
-@Getter
-@ToString
-@EqualsAndHashCode
-public class Movie {
-
-  private String guid;
-  private String title;
-  private String viewCount;
-  private String addedAt;
-  private String originallyAvailableAt;
-  private String lastViewedAt;
-  private String thumb;
-  private List<String> files;
 }
