@@ -32,7 +32,6 @@ import java.io.File;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -107,13 +106,7 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
       }).collect(Collectors.toSet());
 
       movieRepository.saveAll(newMovieModels);
-
       saveMovieFiles(newMovies, newMovieModels);
-
-      var originalFiles = newMovies.stream().map(Movie::getFiles).flatMap(Collection::stream)
-          .collect(Collectors.toSet());
-
-
     } catch (Exception e) {
       log.error("Error while parsing plex response.", e);
     }
