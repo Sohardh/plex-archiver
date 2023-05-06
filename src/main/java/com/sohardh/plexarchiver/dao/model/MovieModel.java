@@ -17,26 +17,45 @@
  * under the License.
  */
 
-package com.sohardh.plexarchiver.dto;
+package com.sohardh.plexarchiver.dao.model;
 
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import java.util.List;
-import lombok.Builder;
-import lombok.EqualsAndHashCode;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.ToString;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-@Builder
+@Entity
+@Table(name = "movies", schema = "pa")
 @Getter
-@ToString
-@EqualsAndHashCode
-public class Movie {
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class MovieModel {
 
+  @Id
+  @Column(name = "guid")
   private String guid;
+  @Column(name = "title")
   private String title;
+  @Column(name = "view_count")
   private String viewCount;
+  @Column(name = "added_at")
   private String addedAt;
-  private String originallyAvailableAt; // release date
+  @Column(name = "originally_available_at")
+  private String originallyAvailableAt;
+  @Column(name = "last_viewed_at")
   private String lastViewedAt;
+  @Column(name = "thumb")
   private String thumb;
-  private List<String> files;
+
+  @OneToMany(cascade = CascadeType.REMOVE, targetEntity = MovieFileModel.class, mappedBy = "guid")
+  private List<MovieFileModel> movieFiles;
+
 }

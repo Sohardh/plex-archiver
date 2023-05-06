@@ -48,9 +48,9 @@ public class PlexFetchDataService {
     instance.add(Calendar.YEAR, -1);
 
     String urlBuilder = MessageFormat.format(
-        "http://{0}:{1}library/sections/2/all?X-Plex-Token={2}&{3}>=1&{4}<={5}",
+        "{0}:{1}/library/sections/2/all?X-Plex-Token={2}&{3}>=1&{4}<={5}",
         plexHostName, plexPort, plexToken, VIEW_COUNT_FIELD, LAST_VIEWED_AT,
-        instance.getTimeInMillis());
+        String.valueOf(instance.getTimeInMillis()));
     WebClient webClient = WebClient.builder()
         .baseUrl(urlBuilder)
         .build();

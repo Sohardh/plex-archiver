@@ -17,26 +17,12 @@
  * under the License.
  */
 
-package com.sohardh.plexarchiver.dto;
+package com.sohardh.plexarchiver.dao.repository;
 
-import java.util.List;
-import lombok.Builder;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.ToString;
+import com.sohardh.plexarchiver.dao.model.MovieModel;
+import org.springframework.data.repository.CrudRepository;
 
-@Builder
-@Getter
-@ToString
-@EqualsAndHashCode
-public class Movie {
+public interface MovieRepository extends CrudRepository<MovieModel, String> {
 
-  private String guid;
-  private String title;
-  private String viewCount;
-  private String addedAt;
-  private String originallyAvailableAt; // release date
-  private String lastViewedAt;
-  private String thumb;
-  private List<String> files;
+
 }

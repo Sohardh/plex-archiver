@@ -26,17 +26,19 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StopWatch;
 
+@Slf4j
 @Component
 @AllArgsConstructor
-@Slf4j
 public class ArchiveJob {
 
   private final MovieArchiveService movieArchiveService;
 
-  @Scheduled(cron = "${schedule.movie.archive.cron.exp}")
+  //  @Scheduled(cron = "${schedule.movie.archive.cron.exp}")
+  @Scheduled(fixedRate = 3000)
   public void scheduleMovieArchive() {
-    log.info("Archiving old/unused movies.");
+    log.info("Archiving old/unwatched movies.");
     StopWatch stopWatch = new StopWatch();
+    stopWatch.start();
     movieArchiveService.archiveMovies();
     stopWatch.stop();
     log.info("Archiving completed in {}s", stopWatch.getTotalTimeSeconds());

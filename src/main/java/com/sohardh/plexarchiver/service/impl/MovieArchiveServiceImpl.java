@@ -19,43 +19,43 @@
 
 package com.sohardh.plexarchiver.service.impl;
 
-import static org.apache.logging.log4j.util.Strings.isEmpty;
+import static com.sohardh.plexarchiver.util.PlexDataParserUtil.parsePlexResponse;
 
+import com.sohardh.plexarchiver.dao.model.MovieFileModel;
+import com.sohardh.plexarchiver.dao.model.MovieModel;
+import com.sohardh.plexarchiver.dao.repository.MovieFileRepository;
+import com.sohardh.plexarchiver.dao.repository.MovieRepository;
 import com.sohardh.plexarchiver.dto.Movie;
-import com.sohardh.plexarchiver.dto.Movie.MovieBuilder;
 import com.sohardh.plexarchiver.service.MovieArchiveService;
 import com.sohardh.plexarchiver.service.PlexFetchDataService;
-import java.io.IOException;
-import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.w3c.dom.Document;
-import org.w3c.dom.NamedNodeMap;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 
 @Slf4j
 @Service
 public class MovieArchiveServiceImpl implements MovieArchiveService {
 
   private final PlexFetchDataService plexFetchDataService;
+  private final MovieRepository movieRepository;
+  private final MovieFileRepository movieFileRepository;
   @Value("${movies.path}")
   private String source;
 
   @Value("${archive.path}")
   private String sink;
 
-  public MovieArchiveServiceImpl(PlexFetchDataService plexFetchDataService) {
+  public MovieArchiveServiceImpl(PlexFetchDataService plexFetchDataService,
+      MovieRepository movieRepository, MovieFileRepository movieFileRepository) {
     this.plexFetchDataService = plexFetchDataService;
+    this.movieRepository = movieRepository;
+    this.movieFileRepository = movieFileRepository;
   }
   /*scp -i /root/.ssh/siteA-rsync-key  dead.letter root@10.10.0.6:/home/hardy*/
 
@@ -67,72 +67,71 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
       log.info("No candidates to archive found. Skipping archive process.");
       return;
     }
-    List<Movie> candidates = new ArrayList<>();
+    List<Movie> candidates;
     try {
-      candidates = parsePlexResponse(moviesWatchedMoreThanOneYearAgo.get());
+      candidates = parsePlexResponse(moviesWatchedMoreThanOneYearAgo.get(), log);
+
+      var guids = candidates.stream().map(Movie::getGuid)
+          .collect(Collectors.toSet());
+
+      var newMovies = new HashSet<Movie>();
+      movieRepository.findAllById(guids)
+          .forEach(movieModel -> {
+            if (guids.contains(movieModel.getGuid())) {
+              return;
+            }
+            Optional<Movie> newMovieOptional = candidates.stream()
+                .filter(movie -> movie.getGuid().equals(movieModel.getGuid())).findFirst();
+            newMovieOptional.ifPresent(newMovies::add);
+          });
+
+      var newMovieModels = newMovies.stream().map(movie -> {
+        var movieModel = new MovieModel();
+        movieModel.setGuid(movie.getGuid());
+        movieModel.setThumb(movie.getThumb());
+        movieModel.setLastViewedAt(movie.getLastViewedAt());
+        movieModel.setTitle(movie.getTitle());
+        movieModel.setAddedAt(movie.getAddedAt());
+        movieModel.setViewCount(movie.getViewCount());
+        movieModel.setOriginallyAvailableAt(movie.getOriginallyAvailableAt());
+        return movieModel;
+      }).collect(Collectors.toSet());
+
+      movieRepository.saveAll(newMovieModels);
+
+      saveMovieFiles(newMovies, newMovieModels);
+
+
     } catch (Exception e) {
       log.error("Error while parsing plex response.", e);
     }
   }
 
-  public List<Movie> parsePlexResponse(String moviesWatchedMoreThanOneYearAgo)
-      throws ParserConfigurationException, IOException, SAXException {
-    final List<Movie> movies = new ArrayList<>();
-    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-    DocumentBuilder builder = factory.newDocumentBuilder();
-    Document doc = builder.parse(
-        new InputSource(new StringReader(moviesWatchedMoreThanOneYearAgo)));
+  private void saveMovieFiles(Set<Movie> newMovies, Set<MovieModel> newMovieModels) {
+    var movieFileModelSet = new HashSet<MovieFileModel>();
 
-    NodeList childNodes = doc.getDocumentElement().getChildNodes();
-    for (int i = 0; i < childNodes.getLength(); i++) {
-      Node videoNode = childNodes.item(i);
-      if (videoNode == null || !videoNode.getNodeName().equals("Video")) {
-        continue;
-      }
+    newMovieModels.forEach(movie -> {
 
-      NamedNodeMap attributes = videoNode.getAttributes();
-      MovieBuilder movieBuilder = Movie.builder().title(getTextContent(attributes, "title"))
-          .thumb(getTextContent(attributes, "thumb")).guid(getTextContent(attributes, "guid"))
-          .viewCount(getTextContent(attributes, "viewCount"))
-          .addedAt(getTextContent(attributes, "addedAt"))
-          .originallyAvailableAt(getTextContent(attributes, "originallyAvailableAt"))
-          .lastViewedAt(getTextContent(attributes, "lastViewedAt"));
-
-      NodeList fileNodes = videoNode.getChildNodes();
-      if (fileNodes.getLength() == 0) {
-        log.warn("No file for movie {} found! Skipping it.", movieBuilder.build().getTitle());
-        continue;
-      }
+      Optional<Movie> movieOptional = newMovies.stream()
+          .filter(newMovie -> movie.getGuid().equals(newMovie.getGuid())).findFirst();
       List<String> files = new ArrayList<>();
-      for (int j = 0; j < fileNodes.getLength(); j++) {
-
-        Node media = fileNodes.item(j);
-        if (media == null || !media.getNodeName().equals("Media")) {
-          continue;
-        }
-
-        NodeList parts = media.getChildNodes();
-
-        for (int k = 0; k < parts.getLength(); k++) {
-          Node part = parts.item(k);
-          if (part == null || !part.getNodeName().equals("Part")) {
-            continue;
-          }
-          NamedNodeMap partAttributes = part.getAttributes();
-          files.add(getTextContent(partAttributes, "file"));
-        }
+      if (movieOptional.isPresent()) {
+        files = movieOptional.get().getFiles();
       }
-      movieBuilder.files(files.stream().filter((file -> !isEmpty(file))).toList());
-      movies.add(movieBuilder.build());
-    }
-    return movies;
+      files.forEach(movieFile -> {
+        var movieFileModel = creteBackupAndGetMovieFile(movie, movieFile);
+        movieFileModelSet.add(movieFileModel);
+      });
+    });
+    movieFileRepository.saveAll(movieFileModelSet);
   }
 
-  private static String getTextContent(NamedNodeMap attributes, String key) {
-    Node namedItem = attributes.getNamedItem(key);
-    if (namedItem == null) {
-      return null;
-    }
-    return namedItem.getNodeValue();
+  private MovieFileModel creteBackupAndGetMovieFile(MovieModel movie, String movieFile) {
+    var movieFileModel = new MovieFileModel();
+    movieFileModel.setGuid(movie);
+    movieFileModel.setOriginalFile(movieFile);
+    /* TODO implement file backup */
+    movieFileModel.setBackupFile("save backup file  path ");
+    return movieFileModel;
   }
 }
