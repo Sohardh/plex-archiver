@@ -40,7 +40,7 @@ public class MovieFileModel {
   private Integer movieFileModelId;
   @Column(name = "guid")
   @ManyToOne(cascade = CascadeType.REMOVE, targetEntity = MovieModel.class)
-  private MovieModel guid;
+  private MovieModel movieModel;
   @Column(name = "original_file")
   private String originalFile;
   @Column(name = "backup_file")

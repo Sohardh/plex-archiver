@@ -28,7 +28,11 @@ import com.sohardh.plexarchiver.dao.repository.MovieRepository;
 import com.sohardh.plexarchiver.dto.Movie;
 import com.sohardh.plexarchiver.service.MovieArchiveService;
 import com.sohardh.plexarchiver.service.PlexFetchDataService;
+import java.io.File;
+import java.io.IOException;
+import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -42,14 +46,18 @@ import org.springframework.stereotype.Service;
 @Service
 public class MovieArchiveServiceImpl implements MovieArchiveService {
 
+  private static final long COPY_WAIT_TIME = 15 * 60 * 1000;
   private final PlexFetchDataService plexFetchDataService;
   private final MovieRepository movieRepository;
   private final MovieFileRepository movieFileRepository;
-  @Value("${movies.path}")
-  private String source;
-
   @Value("${archive.path}")
-  private String sink;
+  private String archiveFilePath;
+  @Value("${archive.host.name}")
+  private String archiveHostName;
+  @Value("${archive.host.user}")
+  private String archiveHostUser;
+  @Value("${ssh.file.path}")
+  private String sshKeyFilePath;
 
   public MovieArchiveServiceImpl(PlexFetchDataService plexFetchDataService,
       MovieRepository movieRepository, MovieFileRepository movieFileRepository) {
@@ -57,11 +65,12 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
     this.movieRepository = movieRepository;
     this.movieFileRepository = movieFileRepository;
   }
-  /*scp -i /root/.ssh/siteA-rsync-key  dead.letter root@10.10.0.6:/home/hardy*/
+  /*scp -i /root/.ssh/siteA-rsync-key  dead.letter root@10.10.0.6:/home/hardy
+   * scp -i {ssh key} {sourceFilePath} {hostUser}:{hostname}:{destinationFilePath}
+   * */
 
   @Override
   public void archiveMovies() {
-
     Optional<String> moviesWatchedMoreThanOneYearAgo = plexFetchDataService.getMoviesWatchedMoreThanOneYearAgo();
     if (moviesWatchedMoreThanOneYearAgo.isEmpty()) {
       log.info("No candidates to archive found. Skipping archive process.");
@@ -101,6 +110,9 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
 
       saveMovieFiles(newMovies, newMovieModels);
 
+      var originalFiles = newMovies.stream().map(Movie::getFiles).flatMap(Collection::stream)
+          .collect(Collectors.toSet());
+
 
     } catch (Exception e) {
       log.error("Error while parsing plex response.", e);
@@ -120,18 +132,68 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
       }
       files.forEach(movieFile -> {
         var movieFileModel = creteBackupAndGetMovieFile(movie, movieFile);
-        movieFileModelSet.add(movieFileModel);
+        if (movieFileModel.isEmpty()) {
+          movieRepository.deleteById(movie.getGuid());
+          return;
+        }
+        movieFileModelSet.add(movieFileModel.get());
       });
     });
     movieFileRepository.saveAll(movieFileModelSet);
+    deleteOriginalFiles(movieFileModelSet);
   }
 
-  private MovieFileModel creteBackupAndGetMovieFile(MovieModel movie, String movieFile) {
+  private void deleteOriginalFiles(Set<MovieFileModel> movieFileModelSet) {
+    movieFileModelSet.forEach(movieFileModel -> {
+      var isFileDeleted = false;
+      try {
+        File file = new File(movieFileModel.getOriginalFile());
+        isFileDeleted = file.delete();
+        /*TODO */
+      } catch (Exception e) {
+        log.error("An exception occurred while deleting the file.", e);
+      }
+      if (!isFileDeleted) {
+        movieRepository.deleteById(movieFileModel.getMovieModel().getGuid());
+      }
+    });
+  }
+
+  private Optional<MovieFileModel> creteBackupAndGetMovieFile(MovieModel movie, String movieFile) {
     var movieFileModel = new MovieFileModel();
-    movieFileModel.setGuid(movie);
+    movieFileModel.setMovieModel(movie);
     movieFileModel.setOriginalFile(movieFile);
-    /* TODO implement file backup */
-    movieFileModel.setBackupFile("save backup file  path ");
-    return movieFileModel;
+
+    var destinationFilePath = copyFileToArchive(movieFile);
+    if (destinationFilePath.isEmpty()) {
+      return Optional.empty();
+    }
+    movieFileModel.setBackupFile(destinationFilePath.get());
+    return Optional.of(movieFileModel);
+  }
+
+  private Optional<String> copyFileToArchive(String movieFilePath) {
+
+    String destination = MessageFormat.format("{1}:{2}:{3}", archiveHostUser, archiveHostName,
+        archiveFilePath);
+    try {
+
+      String[] command = new String[]{"scp", "-i", sshKeyFilePath, movieFilePath, destination};
+
+      ProcessBuilder pb = new ProcessBuilder();
+      pb.command(command);
+      pb.start();
+      pb.wait(COPY_WAIT_TIME);
+
+    } catch (IOException e) {
+      log.error(String.format("Something went wrong while copying the movie : %s",
+          movieFilePath), e);
+      return Optional.empty();
+    } catch (InterruptedException e) {
+      log.error(String.format("Timeout happened while copying the movie : %s",
+          movieFilePath), e);
+      return Optional.empty();
+    }
+    return Optional.of(destination);
   }
 }

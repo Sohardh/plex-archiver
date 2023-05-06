@@ -55,7 +55,7 @@ public class MovieModel {
   @Column(name = "thumb")
   private String thumb;
 
-  @OneToMany(cascade = CascadeType.REMOVE, targetEntity = MovieFileModel.class, mappedBy = "guid")
+  @OneToMany(cascade = CascadeType.REMOVE, targetEntity = MovieFileModel.class, mappedBy = "movieModel")
   private List<MovieFileModel> movieFiles;
 
 }
