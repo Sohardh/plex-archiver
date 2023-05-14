@@ -57,6 +57,8 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
   private String archiveHostUser;
   @Value("${ssh.file.path}")
   private String sshKeyFilePath;
+  @Value("${sample.file.path}")
+  private String sampleFilepath; // /mnt/user/sample
 
   public MovieArchiveServiceImpl(PlexFetchDataService plexFetchDataService,
       MovieRepository movieRepository, MovieFileRepository movieFileRepository) {
@@ -64,7 +66,7 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
     this.movieRepository = movieRepository;
     this.movieFileRepository = movieFileRepository;
   }
-  /*scp -i /root/.ssh/siteA-rsync-key  dead.letter root@10.10.0.6:/home/hardy
+  /*
    * scp -i {ssh key} {sourceFilePath} {hostUser}:{hostname}:{destinationFilePath}
    * */
 
@@ -124,7 +126,7 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
         files = movieOptional.get().getFiles();
       }
       files.forEach(movieFile -> {
-        var movieFileModel = creteBackupAndGetMovieFile(movie, movieFile);
+        var movieFileModel = createBackupAndGetMovieFile(movie, movieFile);
         if (movieFileModel.isEmpty()) {
           movieRepository.deleteById(movie.getGuid());
           return;
@@ -133,26 +135,24 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
       });
     });
     movieFileRepository.saveAll(movieFileModelSet);
-    deleteOriginalFiles(movieFileModelSet);
+    replaceOriginalFiles(movieFileModelSet);
   }
 
-  private void deleteOriginalFiles(Set<MovieFileModel> movieFileModelSet) {
+  private void replaceOriginalFiles(Set<MovieFileModel> movieFileModelSet) {
     movieFileModelSet.forEach(movieFileModel -> {
-      var isFileDeleted = false;
-      try {
-        File file = new File(movieFileModel.getOriginalFile());
-        isFileDeleted = file.delete();
-        /*TODO */
-      } catch (Exception e) {
-        log.error("An exception occurred while deleting the file.", e);
-      }
-      if (!isFileDeleted) {
+
+      var orgFile = new File(movieFileModel.getOriginalFile());
+      var name = orgFile.getName();
+      var extension = name.substring(name.lastIndexOf('.'));
+      boolean replaceWithSampleSuccess = replaceWithSample(extension,
+          movieFileModel.getOriginalFile());
+      if (!replaceWithSampleSuccess) {
         movieRepository.deleteById(movieFileModel.getMovieModel().getGuid());
       }
     });
   }
 
-  private Optional<MovieFileModel> creteBackupAndGetMovieFile(MovieModel movie, String movieFile) {
+  private Optional<MovieFileModel> createBackupAndGetMovieFile(MovieModel movie, String movieFile) {
     var movieFileModel = new MovieFileModel();
     movieFileModel.setMovieModel(movie);
     movieFileModel.setOriginalFile(movieFile);
@@ -163,6 +163,28 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
     }
     movieFileModel.setBackupFile(destinationFilePath.get());
     return Optional.of(movieFileModel);
+  }
+
+
+  private boolean replaceWithSample(String extension, String orgFilePath) {
+
+    try {
+
+      String[] command = new String[]{"cp", sampleFilepath + extension, orgFilePath};
+
+      ProcessBuilder pb = new ProcessBuilder();
+      pb.command(command);
+      pb.start();
+      pb.wait(COPY_WAIT_TIME);
+      return true;
+    } catch (IOException e) {
+      log.error(String.format("Something went wrong while replacing the movie with a sample : %s",
+          orgFilePath), e);
+    } catch (InterruptedException e) {
+      log.error(String.format("Timeout happened while replacing the movie with a sample : %s",
+          orgFilePath), e);
+    }
+    return false;
   }
 
   private Optional<String> copyFileToArchive(String movieFilePath) {
