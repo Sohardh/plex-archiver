@@ -165,11 +165,17 @@ public class MovieArchiveServiceImpl implements MovieArchiveService {
     return Optional.of(movieFileModel);
   }
 
-
+  /**
+   * TODO improvement
+   * <ol>
+   * <li> rename the org file with <original_file>.bkp</li>
+   * <li> copy the sample with using the original name</li>
+   * <li> on success, delete the bkp file</li>
+   * </ol>
+   */
   private boolean replaceWithSample(String extension, String orgFilePath) {
 
     try {
-
       String[] command = new String[]{"cp", sampleFilepath + extension, orgFilePath};
 
       ProcessBuilder pb = new ProcessBuilder();
